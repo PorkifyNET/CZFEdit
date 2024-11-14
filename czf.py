@@ -748,7 +748,7 @@ class LaptopChecklistApp:
             print("Kon Conexant niet stoppen. Heeft deze computer Conexant?")
 
     def open_documentation(self):
-        webbrowser.open("", 2)
+        webbrowser.open("github.com/PorkifyNET/CZFEdit/blob/main/README.md", 2)
 
     def send_to_server(self):
         # Opens Edge in InPrivate mode
