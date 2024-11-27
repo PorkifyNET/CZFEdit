@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "czf.py", line 834, in <module>
+    app = LaptopChecklistApp(root)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "czf.py", line 68, in __init__
+    self.create_form()
+  File "czf.py", line 129, in create_form
+    self.cpu_label = ttk.Label(self.root, text=self.get_cpu())
+                                               ^^^^^^^^^^^^^^
+  File "czf.py", line 363, in get_cpu
+    return str(subprocess.check_output("wmic cpu get name").decode().split('\n')[1].strip())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "subprocess.py", line 466, in check_output
+  File "subprocess.py", line 548, in run
+  File "subprocess.py", line 1026, in __init__
+  File "subprocess.py", line 1538, in _execute_child
+FileNotFoundError: [WinError 2] Het systeem kan het opgegeven bestand niet vinden

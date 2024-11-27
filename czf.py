@@ -1,8 +1,10 @@
 from cProfile import label
+import ctypes
 import datetime
 from datetime import datetime
 from math import ceil
 import os
+import re
 import shutil
 import sys
 import tkinter as tk
@@ -14,10 +16,36 @@ import wmi
 import win32com.client
 import win32serviceutil
 
+def run_as_admin():
+    """
+    Checks if the script is running as an administrator. If not, restarts the program with admin privileges.
+    """
+    try:
+        is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        is_admin = False
+
+    if not is_admin:
+        # Re-launch the program with elevated privileges
+        try:
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, " ".join(sys.argv), None, 1
+            )
+        except Exception as e:
+            print(f"Error: {e}")
+        sys.exit()  # Exit the current program since it will be restarted as admin
+
+# Call this function at the start of your program
+if __name__ == "__main__":
+    #run_as_admin()
+
+    # Your program's main logic starts here
+    print("Program is running with administrator privileges.")
+
 program_name = "CZFEdit"
 program_version = "v1.0"
 global program_location
-program_location = "D:/PorkifyNET/CZFEdit"
+program_location = os.path.dirname(__file__) if os.path.exists(os.path.dirname(__file__)) else filedialog.askdirectory(initialdir=__file__, mustexist=True, title="Waar ben ik geinstalleerd?")
 
 def snap_to_nearest_power_of_2(n):
     # Edge case for n = 0 or negative values
@@ -31,6 +59,40 @@ def snap_to_nearest_power_of_2(n):
 
     # Return the closer power of 2
     return power_of_2_below if (n - power_of_2_below) < (power_of_2_above - n) else power_of_2_above
+
+# Define tooltip class
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+
+        # Bind events to show and hide the tooltip
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+
+    def show_tooltip(self, event=None):
+        # Create a tooltip window
+        if self.tooltip_window is not None:
+            return
+
+        x, y, _, _ = self.widget.bbox("insert")  # Get widget bounds
+        x += self.widget.winfo_rootx() + 25      # Position tooltip slightly offset
+        y += self.widget.winfo_rooty() + 25
+
+        # Create the tooltip window
+        self.tooltip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)  # Remove window decorations
+        tw.wm_geometry(f"+{x}+{y}")
+
+        # Create the label inside the tooltip window
+        label = tk.Label(tw, text=self.text, background="white", relief="solid", borderwidth=1, padx=5, pady=2)
+        label.pack()
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 # Define the main application class
 class LaptopChecklistApp:
@@ -68,6 +130,196 @@ class LaptopChecklistApp:
 
         # Initialize menu bar
         self.create_menu()
+
+        # System information retrieval functions
+    def get_ram(self):
+        try:
+            return str(f"{(ceil(int(psutil.virtual_memory().total / (1024 ** 3)))) + 1 } GB")
+        except:
+            return "Onbekend"
+
+    def get_storage(self):
+        try:
+            return str(f"{ceil(int(psutil.disk_usage('C:').total / (1024 ** 3)))} GB ({snap_to_nearest_power_of_2(ceil(int(psutil.disk_usage('C:').total / (1024 ** 3))))})")
+        except:
+            return "Onbekend"
+
+    def get_cpu(self):
+        try:
+            return str(subprocess.check_output("wmic cpu get name").decode().split('\n')[1].strip())
+        except:
+            return "Onbekend"
+    
+    def get_battery_health(self):
+        battery = psutil.sensors_battery()
+        if battery is None:
+            return "Geen batterij!"
+        else:
+            # Run BatteryInfoView with /stext to save output as plain text
+            try:
+                print(f"{program_location}/plugins/BatteryInfoView.exe")
+                subprocess.run([f"{program_location}/plugins/BatteryInfoView.exe", "/scomma", "battery_info.txt"])
+            except Exception as e:
+                print(e)
+
+            try:
+                with open("battery_info.txt", "r") as file:
+                    lines = file.readlines()
+
+                    # Parse each line to find Design Capacity and Full Charge Capacity
+                    battery_health_var = lines[10][15:].strip()
+                    return battery_health_var
+                
+            except:
+                return "Leesfout"
+
+    def check_updates(self):
+        try:
+            # Initialize the update session
+            session = win32com.client.Dispatch("Microsoft.Update.Session")
+            updateSearcher = session.CreateUpdateSearcher()
+
+            # Search for pending updates (excluding preview updates)
+            searchResult = updateSearcher.Search("IsInstalled=0 and IsHidden=0")
+
+            if searchResult.Updates.Count == 0:
+                return "Windows is bijgewerkt!"
+            elif type(searchResult.Updates.Count) == int:
+                return f"{searchResult.Updates.Count} update(s) beschikbaar"
+            else:
+                return "Onbekend"
+        except Exception as e:
+            return "Onbekend"
+
+    def check_hp_hotkeys(self):
+        if os.path.exists("C:\Program Files (x86)\HP\HP Hotkey Support\HotkeyService.exe"):
+            return "Ja"
+        else: return "Nee"
+
+    def check_conexant_audio(self):
+        if os.path.exists("C:\Program Files\CONEXANT"):
+            return "Nee"
+        else: return "Ja"
+        
+    def get_current_date(self):
+        return str(f"{datetime.now().strftime("%d/%m/%Y")}")
+
+    def refresh_battery_health_label(self):
+        self.battery_health.set(self.get_battery_health())
+        
+    def refresh_ram_label(self):
+        try:
+            self.ram.set(self.get_ram())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+        
+    def refresh_storage_label(self):
+        try:
+            self.storage_space.set(self.get_storage())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+        
+    def refresh_cpu_label(self):
+        try:
+            self.cpu_name.set(self.get_cpu())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+        
+    def refresh_updates_label(self):
+        try:
+            self.updates_installed.set(self.check_updates())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+        
+    def refresh_hp_label(self):
+        try:
+            self.hp_hotkeys_installed.set(self.check_hp_hotkeys())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+        
+    def refresh_conexant_label(self):
+        try:
+            self.conexant_installed.set(self.check_conexant_audio())
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+            
+    def update_battery_health_style(self, *args):
+        value = self.battery_health.get()
+        print(f"Battery Health Updated: {value}")  # Debugging output
+
+        if value == "Geen batterij!":
+            self.battery_health_label.config(foreground="red")
+            Tooltip(self.battery_health_label, "Deze laptop heeft geen accu, de accu is dood, of is niet goed ingeplugt. Check de accu.")
+        elif value == "Onbekend":
+            self.battery_health_label.config(foreground="red")
+            Tooltip(self.battery_health_label, "De gezondheid van de accu kan niet worden bepaald. Dit kan aan de code van dit programma liggen, of BatteryLifeInfo is niet meegeleverd door ons.")
+        else:
+            self.battery_health_label.config(foreground="black")
+
+    def update_ram_style(self, *args):
+        value = self.ram.get()
+        print(f"RAM Updated: {value}")  # Debugging output
+
+        if value == "Onbekend":
+            self.ram_label.config(foreground="red")
+            Tooltip(self.ram_label, "De hoeveelheid RAM kon niet worden bepaald. Dit is hoogstwaarschijnlijk een fout aan onze kant. Probeer erachter te komen met cLauncher of met Taakbeheer.")
+        else:
+            self.ram_label.config(foreground="black")
+
+    def update_cpu_style(self, *args):
+        value = self.cpu_name.get()
+        print(f"CPU Updated: {value}")  # Debugging output
+
+        if value == "Onbekend":
+            self.cpu_label.config(foreground="red")
+            Tooltip(self.cpu_label, "De naam van de CPU kon niet worden gevonden. Dit is hoogstwaarschijnlijk een fout aan onze kant. Probeer erachter te komen met cLauncher of met Taakbeheer.")
+        else:
+            self.cpu_label.config(foreground="black")
+
+    def update_storage_style(self, *args):
+        value = self.storage_space.get()
+        print(f"Storage Space Updated: {value}")  # Debugging output
+
+        if value == "Onbekend":
+            self.storage_label.config(foreground="red")
+            Tooltip(self.storage_label, "De hoeveelheid opslag kon niet worden bepaald. Dit is kan een fout zijn aan onze kant, of je checkt de laptop voor het installeren van Windows. Probeer achter de schijfgrootte te komen met cLauncher of met Taakbeheer.")
+        else:
+            self.storage_label.config(foreground="black")
+            Tooltip(self.storage_label, "LET OP: Dit geeft alleen de grootte van de C-schijf aan. Het kan voorkomen dat er een tweede schijf in de laptop zit, dus controleer dit voor de zekerheid.")
+
+    def update_updates_style(self, *args):
+        value = self.updates_installed.get()
+        print(f"Windows Updates Status Updated: {value}")  # Debugging output
+
+        if value == "Onbekend":
+            self.updates_label.config(foreground="red")
+            Tooltip(self.updates_label, "Er is iets misgegaan tijdens het checken voor updates. Dit kan zijn omdat je niet bent verbonden met het internet.")
+        elif value == "Windows is bijgewerkt!":
+            self.updates_label.config(foreground="black")
+        else:
+            self.updates_label.config(foreground="red")
+            Tooltip(self.updates_label, "Er staan updates klaar. Deze moeten worden gedaan voordat je de controle kan afronden.")
+
+    def update_hotkeys_style(self, *args):
+        value = self.hp_hotkeys_installed.get()
+        print(f"Hotkeys Updated: {value}")  # Debugging output
+
+        if value == "Nee":
+            self.hp_hotkeys_label.config(foreground="orange")
+            Tooltip(self.hp_hotkeys_label, "Hotkeys zijn nodig op HP laptops. Is dit geen HP laptop? Dan kun je dit negeren!")
+        else:
+            self.hp_hotkeys_label.config(foreground="black")
+            Tooltip(self.hp_hotkeys_label, "Als dit een HP laptop is is het nodig om HP Hotkeys te installeren. De installatie kan gevonden worden onder Controle > HP > Instaleer Hotkeys...")
+
+    def update_conexant_style(self, *args):
+        value = self.conexant_installed.get()
+        print(f"Conexant Updated: {value}")  # Debugging output
+
+        if value == "Nee":
+            self.conexant_audio_label.config(foreground="orange")
+            Tooltip(self.conexant_audio_label, "De Conexant audio driver kan wel eens geinstalleerd worden terwijl er geen Conexant-speakers in de laptop zitten. Dit veroorzaakt veel irritante pop-ups. Als dit niet het geval is kun je dit negeren.")
+        else:
+            self.conexant_audio_label.config(foreground="black")
         
     def create_form(self):
         # Order Number
@@ -102,46 +354,45 @@ class LaptopChecklistApp:
         
         # Battery Health
         ttk.Label(self.root, text="Kwaliteit Accu:").grid(row=5, column=0, padx=5, pady=5)
-        self.battery_health_label = ttk.Label(self.root, text=self.get_battery_health())
-        battery_health = self.get_battery_health()
-        
-        # Set text color based on the battery health value
-        if battery_health == "Geen batterij!" or battery_health == "Onbekend":
-            self.battery_health_label.config(foreground="red")
-        else:
-            self.battery_health_label.config(foreground="black")  # Optional: set to black for valid percentages
-
+        self.battery_health_label = ttk.Label(self.root, textvariable=self.battery_health)
         self.battery_health_label.grid(row=5, column=1, padx=5, pady=5)
+        self.battery_health.trace_add("write", self.update_battery_health_style)
 
         # RAM in GB
         ttk.Label(self.root, text="RAM (GB):").grid(row=6, column=0, padx=5, pady=5)
-        self.ram_label = ttk.Label(self.root, text=self.get_ram())
+        self.ram_label = ttk.Label(self.root, textvariable=self.ram)
         self.ram_label.grid(row=6, column=1, padx=5, pady=5)
+        self.ram.trace_add("write", self.update_ram_style)
 
         # Storage space of C: drive
         ttk.Label(self.root, text="Opslagruimte C: (GB):").grid(row=7, column=0, padx=5, pady=5)
-        self.storage_label = ttk.Label(self.root, text=self.get_storage())
+        self.storage_label = ttk.Label(self.root, textvariable=self.storage_space)
         self.storage_label.grid(row=7, column=1, padx=5, pady=5)
+        self.storage_space.trace_add("write", self.update_storage_style)
 
         # CPU Name
         ttk.Label(self.root, text="CPU Naam:").grid(row=8, column=0, padx=5, pady=5)
-        self.cpu_label = ttk.Label(self.root, text=self.get_cpu())
+        self.cpu_label = ttk.Label(self.root, textvariable=self.cpu_name)
         self.cpu_label.grid(row=8, column=1, padx=5, pady=5)
+        self.cpu_name.trace_add("write", self.update_cpu_style)
 
         # Are updates installed?
         ttk.Label(self.root, text="Updates geinstalleerd?").grid(row=9, column=0, padx=5, pady=5)
-        self.updates_label = ttk.Label(self.root, text=self.check_updates())
+        self.updates_label = ttk.Label(self.root, textvariable=self.updates_installed)
         self.updates_label.grid(row=9, column=1, padx=5, pady=5)
+        self.updates_installed.trace_add("write", self.update_updates_style)
 
         # Is HP Hotkeys installed?
         ttk.Label(self.root, text="HP Hotkeys geinstalleerd?").grid(row=10, column=0, padx=5, pady=5)
-        self.hp_hotkeys_label = ttk.Label(self.root, text=self.check_hp_hotkeys())
+        self.hp_hotkeys_label = ttk.Label(self.root, textvariable=self.hp_hotkeys_installed)
         self.hp_hotkeys_label.grid(row=10, column=1, padx=5, pady=5)
+        self.hp_hotkeys_installed.trace_add("write", self.update_hotkeys_style)
 
         # Is Conexant Audio disabled or nonexistent?
         ttk.Label(self.root, text="Conexant Audio gedeactiveerd of niet aanwezig?").grid(row=11, column=0, padx=5, pady=5)
-        self.conexant_audio_label = ttk.Label(self.root, text=self.check_conexant_audio())
+        self.conexant_audio_label = ttk.Label(self.root, textvariable=self.conexant_installed)
         self.conexant_audio_label.grid(row=11, column=1, padx=5, pady=5)
+        self.conexant_installed.trace_add("write", self.update_conexant_style)
 
         # Drivers up-to-date (Checkbox)
         ttk.Label(self.root, text="Stuurprogramma's up-to-date?").grid(row=12, column=0, padx=5, pady=5)
@@ -219,6 +470,7 @@ class LaptopChecklistApp:
         file_menu.add_command(label="Openen...", command=self.open_file)
         file_menu.add_command(label="Opslaan", command=self.save_file)
         file_menu.add_command(label="Opslaan als...", command=self.save_as_file)
+        file_menu.add_command(label="Exporteren als winkelvoorraad-checklist...", command=self.export_file_as_inventory_file)
         file_menu.add_separator()
         file_menu.add_command(label="Stel plugin-locatie in...", command=self.set_location)
         file_menu.add_separator()
@@ -286,6 +538,9 @@ class LaptopChecklistApp:
         
         fujitsu_checks = tk.Menu(checks_menu, tearoff=0)
         fujitsu_checks.add_command(label="Charging Tool uitschakelen", command=self.disable_fujitsu_battery_charging_tool)
+        fujitsu_checks.add_separator()
+        fujitsu_checks.add_command(label="Toon backup BIOS wachtwoorden", command=self.show_fujitsu_backup_bios_pw)
+        fujitsu_checks.add_command(label="Open BiosPW", command=self.open_biospw)
         checks_menu.add_cascade(label="Fujitsu", menu=fujitsu_checks)
         
         hp_checks = tk.Menu(checks_menu, tearoff=0)
@@ -327,7 +582,7 @@ class LaptopChecklistApp:
         refresh_menu.add_separator()
         refresh_menu.add_command(label="HP Hotkeys Service", command=self.refresh_hp_label())
         refresh_menu.add_command(label="Conexant Audio Service", command=self.refresh_conexant_label())
-        menu_bar.add_cascade(label="Vernieuwen", menu=refresh_menu, state="disabled")
+        #menu_bar.add_cascade(label="Vernieuwen", menu=refresh_menu)
 
         #Shutdown Menu
         shutdown_menu = tk.Menu(menu_bar, tearoff=0)
@@ -346,96 +601,6 @@ class LaptopChecklistApp:
         menu_bar.add_cascade(label="Help", menu=help_menu)
 
         self.root.config(menu=menu_bar)
-
-    # System information retrieval functions
-    def get_ram(self):
-        return str(f"{(ceil(int(psutil.virtual_memory().total / (1024 ** 3)))) + 1 } GB")
-
-    def get_storage(self):
-        return str(f"{ceil(int(psutil.disk_usage('C:').total / (1024 ** 3)))} GB ({snap_to_nearest_power_of_2(ceil(int(psutil.disk_usage('C:').total / (1024 ** 3))))})")
-
-    def get_cpu(self):
-        return str(subprocess.check_output("wmic cpu get name").decode().split('\n')[1].strip())
-    
-    def get_battery_health(self):
-        battery = psutil.sensors_battery()
-        if battery is None:
-            return "Geen batterij!"
-        else:
-            # Run BatteryInfoView with /stext to save output as plain text
-            subprocess.run([f"{program_location}/plugins/BatteryInfoView.exe", "/scomma", "battery_info.txt"], check=True)
-
-            try:
-                with open("battery_info.txt", "r") as file:
-                    lines = file.readlines()
-
-                    # Parse each line to find Design Capacity and Full Charge Capacity
-                    battery_health_var = lines[10][15:].strip()
-                    return battery_health_var
-                
-            except FileNotFoundError:
-                return "Leesfout"
-        
-    def open_batterylifeinfo(self):
-        subprocess.Popen(f"{program_location}/plugins/BatteryInfoView.exe", shell=True)
-        
-    def open_snappy(self):
-        subprocess.Popen(f"{program_location}/plugins/Snappy64.exe", shell=True)
-
-    def check_updates(self):
-        try:
-            # Initialize the update session
-            session = win32com.client.Dispatch("Microsoft.Update.Session")
-            updateSearcher = session.CreateUpdateSearcher()
-
-            # Search for pending updates (excluding preview updates)
-            searchResult = updateSearcher.Search("IsInstalled=0 and IsHidden=0")
-
-            if searchResult.Updates.Count == 0:
-                return "Windows is bijgewerkt!"
-            elif type(searchResult.Updates.Count) == int:
-                return f"{searchResult.Updates.Count} update(s) beschikbaar"
-            else:
-                return "Onbekend"
-        except Exception as e:
-            return str(e)
-
-    def check_hp_hotkeys(self):
-        service_name = "HPSysInfo"  # This is the service name for HP Hotkey UWP Service.
-        pass
-
-        try:
-            # Check if the service is running
-            status = win32serviceutil.QueryServiceStatus(service_name)
-        
-            # The status is a tuple, and the first value is the state of the service (4 = running)
-            if status[1] == 4:
-                return "Ja"
-            else:
-                return "Wordt niet uitgevoerd"
-    
-        except:
-            return "Nee"
-
-    def check_conexant_audio(self):
-        service_name = "CxUtilSvc"  # Conexant Audio Service name
-        pass
-
-        try:
-            # Check if the service is running
-            status = win32serviceutil.QueryServiceStatus(service_name)
-        
-            # The status is a tuple, and the first value is the state of the service (4 = running)
-            if status[1] == 4:
-                return "Nee"
-            else:
-                return "Wordt niet uitgevoerd"
-    
-        except:
-            return "Ja"
-        
-    def get_current_date(self):
-        return str(f"{datetime.now().strftime("%d/%m/%Y")}")
         
     def toggle_wifi(self, enable=True):
         # Set the name of your Wi-Fi interface here
@@ -473,27 +638,14 @@ class LaptopChecklistApp:
             messagebox.showinfo(program_name, "Fujitsu Battery Charging Tool is succesvol uitgeschakeld.")
         except Exception as e:
             messagebox.showerror(program_name, e)
-            
-    def refresh_battery_health_label(self):
-        self.battery_health_label.config(text=self.get_battery_health())
+
+    def show_fujitsu_backup_bios_pw(self):
+        messagebox.showinfo(program_name, """3hqgo3
+                            jqw534
+                            0qww294e""")
         
-    def refresh_ram_label(self):
-        self.ram_label.config(text=self.get_ram())
-        
-    def refresh_storage_label(self):
-        self.storage_label.config(text=self.get_storage())
-        
-    def refresh_cpu_label(self):
-        self.cpu_label.config(text=self.get_cpu())
-        
-    def refresh_updates_label(self):
-        self.updates_label.config(text=self.check_updates())
-        
-    def refresh_hp_label(self):
-        self.hp_hotkeys_label.config(text=self.check_hp_hotkeys())
-        
-    def refresh_conexant_label(self):
-        self.conexant_audio_label.config(text=self.check_conexant_audio())
+    def open_biospw(self):
+        subprocess.run("start msedge --inprivate bios-pw.org", shell=True)
 
     # Function placeholders for menu actions
     def new_file(self):
@@ -600,6 +752,79 @@ class LaptopChecklistApp:
         messagebox.showinfo("Opgeslagen!", f"Checklist opgeslagen als {filename}")
         root.title(f"CZFEdit: Controle Checklist - {self.filename}")
 
+    def export_file(self):
+        file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Tekstbestand", "*.txt")], initialfile=self.order.get())
+        if file:
+            self.filename = file
+            self.export_file_as_inventory_file(self, self.filename)
+
+    def export_file_as_inventory_file(self, filename):
+        # Format the data and save it into the .CZF file
+        with open(filename, 'w') as file:
+            file.write("+=====[Specificaties Winkelvoorraad]=====+\n")
+            file.write(f"Ordernummer: {self.order.get()}\n")
+            file.write(f"CZ-nummer: {self.cz.get()}\n")
+            file.write(f"Orderdatum: {self.date.get()}\n")
+            file.write(f"Merk laptop: {self.brand.get()}\n")
+            file.write(f"Windows Versie: {self.windows_version.get()}\n")
+            file.write(f"Kwaliteit accu: {self.get_battery_health()}\n")
+            file.write(f"RAM: {self.get_ram()}\n")
+            file.write(f"Opslag: {self.get_storage()}\n")
+            file.write(f"CPU: {self.get_cpu()}\n")
+            
+            if self.check_updates() == "Windows is bijgewerkt!":
+                file.write(f"Windows is geupdated!\n")
+            else:
+                file.write(f"Windows is niet geinstalleerd!\n")
+                
+            if self.check_hp_hotkeys() == True and self.brand.get() == "HP":
+                file.write(f"Hotkeys zijn geinstalleerd!\n")
+            elif self.check_hp_hotkeys() == False and self.brand.get() == "HP":
+                file.write(f"Hotkeys zijn niet geinstalleerd!\n")
+            else:
+                file.write(f"Hotkeys zijn niet nodig, gezien dit geen HP is!\n")
+                
+            if self.conexant_installed() == "Ja":
+                file.write(f"Conexant is geinstalleerd!\n")
+            else:
+                file.write(f"Conexant is niet geinstalleerd!\n")
+                
+            if self.drivers_check.get() == True:
+                file.write(f"Drivers zijn up-to-date!\n")
+            else:
+                file.write(f"Drivers zijn niet up-to-date!\n")
+                
+            if self.audio_check.get() == True:
+                file.write(f"Audio is gecheckt en werkt!\n")
+            else:
+                file.write(f"Audio is niet gecheckt!\n")
+                
+            if self.keyboard_check.get() == True:
+                file.write(f"Toetsenbord is gecheckt en werkt volledig!\n")
+            else:
+                file.write(f"Toetsenbord is niet gecheckt!\n")
+                
+            if self.touch_check.get() == True:
+                file.write(f"Touchscreen is gecheckt en werkt!\n")
+            else:
+                file.write(f"Touchscreen is niet gecheckt, of deze laptop heeft geen touchscreen!\n")
+                
+            if self.camera_check.get() == True:
+                file.write(f"Camera is gecheckt en werkt!\n")
+            else:
+                file.write(f"Camera is niet gecheckt, of deze laptop heeft geen camera!\n")
+                
+            if self.office_check.get() == True:
+                file.write(f"Office is geinstalleerd en geactiveerd!\n")
+            else:
+                file.write(f"Office is niet geinstalleerd, geactiveerd, of was niet nodig!\n")
+            file.write(f"Gecontroleerd door {self.executor_name.get()} op {self.get_current_date()}\n")
+            file.write("+=====[ CZEdit ]=====+\n")
+        messagebox.showinfo("Geexporteerd!", f"Winkelvoorraad-checklist opgeslagen als {filename}")
+
+        self.battery_health.trace_add("write", self.update_battery_health_style)
+
+
     def set_location(self):
         global program_location
         if program_location == None:
@@ -616,6 +841,12 @@ class LaptopChecklistApp:
         file = filedialog.askopenfilename(defaultextension=".czf", filetypes=[("CZF-bestanden", "*.czf")])
         if file:
             subprocess.Popen(f"notepad.exe {file}", shell=True)
+            
+    def open_batterylifeinfo(self):
+        subprocess.Popen(f"{program_location}/plugins/BatteryInfoView.exe", shell=True)
+        
+    def open_snappy(self):
+        subprocess.Popen(f"{program_location}/plugins/Snappy64.exe", shell=True)
     
     def manage_first_controllers(self):
         pass
@@ -685,10 +916,10 @@ class LaptopChecklistApp:
         pass # The Keyboard Tester is not done yet!
     
     def open_touchscreen_tester(self):
-        subprocess.Popen("plugins/tt.exe")
+        subprocess.Popen(f"{program_location}/plugins/tt.exe")
     
     def install_ms_office(self):
-        subprocess.Popen("thirdparty/o64.exe")
+        subprocess.Popen(f"{program_location}/plugins/o64.exe")
         
     def office_shortcuts_programdata(self):
         try:
@@ -735,7 +966,7 @@ class LaptopChecklistApp:
         subprocess.Popen(f"{program_location}/plugins/moat.exe", shell=True)
     
     def install_hp_hotkeys(self):
-        subprocess.Popen("thirdparty/hphk.exe")
+        subprocess.Popen(f"{program_location}/plugins/hphk.exe")
     
     def disable_conexant_audio(self):
         try:
@@ -748,7 +979,7 @@ class LaptopChecklistApp:
             print("Kon Conexant niet stoppen. Heeft deze computer Conexant?")
 
     def open_documentation(self):
-        webbrowser.open("github.com/PorkifyNET/CZFEdit/blob/main/README.md", 2)
+        subprocess.run("start msedge --inprivate github.com/PorkifyNET/CZFEdit/blob/main/README.md", shell=True)
 
     def send_to_server(self):
         # Opens Edge in InPrivate mode
@@ -771,6 +1002,7 @@ class LaptopChecklistApp:
         return True  # If no file is open, allow the operation without saving
     
     # More function placeholders...
+
 
 # Run the application
 root = tk.Tk()

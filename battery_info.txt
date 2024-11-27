@@ -1,0 +1,23 @@
+Description,Value
+Battery Name,FX50442
+Manufacture Name,OEM
+Serial Number,  
+Manufacture Date,
+Power State,Discharging
+Current Capacity (in %),71.6%
+Current Capacity Value,22.655 mWh
+Full Charged Capacity,31.624 mWh
+Designed Capacity,47.997 mWh
+Battery Health,65.9%
+Voltage,10.584 millivolts 
+Charge/Discharge Rate ,-25.049 milliwatts 
+Chemistry ,Lithium Ion
+Low Battery Capacity (1),1.577 mWh
+Low Battery Capacity (2),3.153 mWh
+Critical Bias,
+Number of charge/discharge cycles,0
+Battery Temperature,
+Remaining battery time for the current activity (Estimated),
+Full battery time for the current activity (Estimated),
+Remaining time for charging the battery (Estimated),
+Total  time for charging the battery (Estimated),
