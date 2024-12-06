@@ -4,16 +4,16 @@ Manufacture Name,OEM
 Serial Number,  
 Manufacture Date,
 Power State,Discharging
-Current Capacity (in %),71.6%
-Current Capacity Value,22.655 mWh
-Full Charged Capacity,31.624 mWh
+Current Capacity (in %),76.0%
+Current Capacity Value,23.835 mWh
+Full Charged Capacity,31.344 mWh
 Designed Capacity,47.997 mWh
-Battery Health,65.9%
-Voltage,10.584 millivolts 
-Charge/Discharge Rate ,-25.049 milliwatts 
+Battery Health,65.3%
+Voltage,10.707 millivolts 
+Charge/Discharge Rate ,-19.339 milliwatts 
 Chemistry ,Lithium Ion
-Low Battery Capacity (1),1.577 mWh
-Low Battery Capacity (2),3.153 mWh
+Low Battery Capacity (1),1.518 mWh
+Low Battery Capacity (2),3.036 mWh
 Critical Bias,
 Number of charge/discharge cycles,0
 Battery Temperature,

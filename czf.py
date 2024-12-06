@@ -1,20 +1,15 @@
-from cProfile import label
 import ctypes
 import datetime
 from datetime import datetime
 from math import ceil
 import os
-import re
-import shutil
 import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import webbrowser
 import psutil
 import subprocess
-import wmi
 import win32com.client
-import win32serviceutil
 
 def run_as_admin():
     """
@@ -43,9 +38,13 @@ if __name__ == "__main__":
     print("Program is running with administrator privileges.")
 
 program_name = "CZFEdit"
-program_version = "v1.0"
+program_version = "v1.2"
 global program_location
 program_location = os.path.dirname(__file__) if os.path.exists(os.path.dirname(__file__)) else filedialog.askdirectory(initialdir=__file__, mustexist=True, title="Waar ben ik geinstalleerd?")
+
+if not os.path.exists("%TEMP%/CZFEdit"):
+    os.mkdir(f"{os.environ.get("TEMP")}/CZFEdit")
+    print(f"No temporary folder was found, creating a new one in {os.environ.get("TEMP")}/CZFEdit...")
 
 def snap_to_nearest_power_of_2(n):
     # Edge case for n = 0 or negative values
@@ -175,20 +174,22 @@ class LaptopChecklistApp:
 
     def check_updates(self):
         try:
-            # Initialize the update session
+            # Initialize the update session  
             session = win32com.client.Dispatch("Microsoft.Update.Session")
             updateSearcher = session.CreateUpdateSearcher()
 
             # Search for pending updates (excluding preview updates)
             searchResult = updateSearcher.Search("IsInstalled=0 and IsHidden=0")
-
+                
             if searchResult.Updates.Count == 0:
                 return "Windows is bijgewerkt!"
             elif type(searchResult.Updates.Count) == int:
                 return f"{searchResult.Updates.Count} update(s) beschikbaar"
             else:
                 return "Onbekend"
+                
         except Exception as e:
+            messagebox.showerror(program_name, e)
             return "Onbekend"
 
     def check_hp_hotkeys(self):
@@ -470,7 +471,12 @@ class LaptopChecklistApp:
         file_menu.add_command(label="Openen...", command=self.open_file)
         file_menu.add_command(label="Opslaan", command=self.save_file)
         file_menu.add_command(label="Opslaan als...", command=self.save_as_file)
-        file_menu.add_command(label="Exporteren als winkelvoorraad-checklist...", command=self.export_file_as_inventory_file)
+        
+        export_menu = tk.Menu(file_menu, tearoff=0)
+        export_menu.add_command(label="Inventaris-bestand", command=self.export_file)
+        export_menu.add_command(label="Sales-pitch", command=self.export_sales_pitch)
+        file_menu.add_cascade(label="Exporteren als...", menu=export_menu)
+
         file_menu.add_separator()
         file_menu.add_command(label="Stel plugin-locatie in...", command=self.set_location)
         file_menu.add_separator()
@@ -620,14 +626,15 @@ class LaptopChecklistApp:
     def reset_pw_age(self):
         try:
             subprocess.Popen("net accounts /maxpwage:unlimited", shell=True)
-            subprocess.Popen("""Set-LocalUser -Name ^"Gebruiker^" -PasswordNeverExpires 1""", shell=True)
+            subprocess.Popen("""powershell Set-LocalUser -Name ^"Gebruiker^" -PasswordNeverExpires 1""", shell=True)
+            subprocess.Popen("""powershell Set-LocalUser -Name ^"Gebruiker^" -PasswordNeverExpires 1""", shell=True)
             messagebox.showinfo(program_name, "Leeftijdslimiet wachtwoord is succesvol verwijderd.")
         except Exception as e:
             messagebox.showerror(program_name, e)
             
     def disable_fast_startup(self):
         try:
-            subprocess.Popen("powercfg /hibernate off", shell=True)
+            subprocess.Popen("Powercfg -h off", shell=True)
             messagebox.showinfo(program_name, "Snel opstarten is succesvol uitgeschakeld.")
         except Exception as e:
             messagebox.showerror(program_name, e)
@@ -663,51 +670,79 @@ class LaptopChecklistApp:
             root.title(f"CZFEdit: Controle Checklist - {self.filename}")
 
         try:
+            print(f"NEW FILE LOADED: {self.filename}")
             for line in lines:
                 if line.startswith("ORDER"):
                     self.order.delete(0, tk.END)
                     self.order.insert(0, line.split("ORDER")[1].strip())
+                    print(f"Found ORDER {line.split("ORDER")[1].strip()}")
                 elif line.startswith("CZNUM"):
                     self.cz.delete(0, tk.END)
                     self.cz.insert(0, line.split("CZNUM")[1].strip())
+                    print(f"Found CZNUM {line.split("CZNUM")[1].strip()}")
                 elif line.startswith("ORDDAT"):
                     self.date.delete(0, tk.END)
                     self.date.insert(0, line.split("ORDDAT")[1].strip())
+                    print(f"Found ORDDAT {line.split("ORDDAT")[1].strip()}")
                 elif line.startswith("BRAND"):
                     self.brand.set(line.split("BRAND")[1].strip())
+                    print(f"Found BRAND {line.split("BRAND")[1].strip()}")
                 elif line.startswith("WINVER"):
                     self.windows_version.set(line.split("WINVER")[1].strip())
+                    print(f"Found WINVER {line.split("WINVER")[1].strip()}")
                 elif line.startswith("BATQLTY"):
                     self.battery_health_label.config(text=line.split("BATQLTY")[1].strip())
+                    self.battery_health.set(line.split("BATQLTY")[1].strip())
+                    print(f"Found BATQLTY {line.split("BATQLTY")[1].strip()}")
                 elif line.startswith("RAM"):
                     self.ram_label.config(text=line.split("RAM")[1].strip())
+                    self.ram.set(line.split("RAM")[1].strip())
+                    print(f"Found RAM {line.split("RAM")[1].strip()}")
                 elif line.startswith("STRSPC"):
                     self.storage_label.config(text=line.split("STRSPC")[1].strip())
+                    self.storage_space.set(line.split("STRSPC")[1].strip())
+                    print(f"Found STRSPC {line.split("STRSPC")[1].strip()}")
                 elif line.startswith("CPU"):
                     self.cpu_label.config(text=line.split("CPU")[1].strip())
+                    self.cpu_name.set(line.split("CPU")[1].strip())
+                    print(f"Found CPU {line.split("CPU")[1].strip()}")
                 elif line.startswith("WINUTD"):
                     self.updates_label.config(text=line.split("WINUTD")[1].strip())
+                    self.updates_installed.set(line.split("WINUTD")[1].strip())
+                    print(f"Found WINUTD {line.split("WINUTD")[1].strip()}")
                 elif line.startswith("HPHKINST"):
                     self.hp_hotkeys_label.config(text=line.split("HPHKINST")[1].strip())
+                    self.hp_hotkeys_installed.set(line.split("HPHKINST")[1].strip())
+                    print(f"Found HPHKINST {line.split("HPHKINST")[1].strip()}")
                 elif line.startswith("CONEXANT"):
                     self.conexant_audio_label.config(text=line.split("CONEXANT")[1].strip())
+                    self.conexant_installed.set(line.split("CONEXANT")[1].strip())
+                    print(f"Found CONEXANT {line.split("CONEXANT")[1].strip()}")
                 elif line.startswith("DRVUTD"):
                     self.drivers_check.set(line.split("DRVUTD")[1].strip())
+                    print(f"Found DRVUTD {line.split("DRVUTD")[1].strip()}")
                 elif line.startswith("POSAUD"):
                     self.audio_check.set(line.split("POSAUD")[1].strip())
+                    print(f"Found POSAUD {line.split("POSAUD")[1].strip()}")
                 elif line.startswith("POSKEY"):
                     self.keyboard_check.set(line.split("POSKEY")[1].strip())
+                    print(f"Found POSKEY {line.split("POSKEY")[1].strip()}")
                 elif line.startswith("POSTCH"):
                     self.touch_check.set(line.split("POSTCH")[1].strip())
+                    print(f"Found POSTCH {line.split("POSTCH")[1].strip()}")
                 elif line.startswith("POSCAM"):
                     self.camera_check.set(line.split("POSCAM")[1].strip())
+                    print(f"Found POSCAM {line.split("POSCAM")[1].strip()}")
                 elif line.startswith("OFFACT"):
                     self.office_check.set(line.split("OFFACT")[1].strip())
+                    print(f"Found OFFACT {line.split("OFFACT")[1].strip()}")
                 elif line.startswith("CTRLNAME"):
                     self.executor_name.delete(0, tk.END)
                     self.executor_name.insert(0, line.split("CTRLNAME")[1].strip())
+                    print(f"Found CTRLNAME {line.split("CTRLNAME")[1].strip()}")
                 elif line.startswith("CTRLDATE"):
                     self.execution_date_label.config(text=line.split("CTRLDATE")[1].strip(),foreground="black")
+                    print(f"Found CTRLDATE {line.split("CTRLDATE")[1].strip()}")
         except Exception as e:
             messagebox.showerror(program_name, e)
 
@@ -756,12 +791,12 @@ class LaptopChecklistApp:
         file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Tekstbestand", "*.txt")], initialfile=self.order.get())
         if file:
             self.filename = file
-            self.export_file_as_inventory_file(self, self.filename)
+            self.export_file_as_inventory_file(self, file)
 
     def export_file_as_inventory_file(self, filename):
         # Format the data and save it into the .CZF file
         with open(filename, 'w') as file:
-            file.write("+=====[Specificaties Winkelvoorraad]=====+\n")
+            file.write("+=====[ Specificaties Winkelvoorraad ]=====+\n")
             file.write(f"Ordernummer: {self.order.get()}\n")
             file.write(f"CZ-nummer: {self.cz.get()}\n")
             file.write(f"Orderdatum: {self.date.get()}\n")
@@ -775,7 +810,7 @@ class LaptopChecklistApp:
             if self.check_updates() == "Windows is bijgewerkt!":
                 file.write(f"Windows is geupdated!\n")
             else:
-                file.write(f"Windows is niet geinstalleerd!\n")
+                file.write(f"Windows mist nog updates!\n")
                 
             if self.check_hp_hotkeys() == True and self.brand.get() == "HP":
                 file.write(f"Hotkeys zijn geinstalleerd!\n")
@@ -784,7 +819,7 @@ class LaptopChecklistApp:
             else:
                 file.write(f"Hotkeys zijn niet nodig, gezien dit geen HP is!\n")
                 
-            if self.conexant_installed() == "Ja":
+            if self.conexant_installed.get() == "Ja":
                 file.write(f"Conexant is geinstalleerd!\n")
             else:
                 file.write(f"Conexant is niet geinstalleerd!\n")
@@ -819,10 +854,80 @@ class LaptopChecklistApp:
             else:
                 file.write(f"Office is niet geinstalleerd, geactiveerd, of was niet nodig!\n")
             file.write(f"Gecontroleerd door {self.executor_name.get()} op {self.get_current_date()}\n")
-            file.write("+=====[ CZEdit ]=====+\n")
+            file.write("+================[ CZEdit ]================+\n")
         messagebox.showinfo("Geexporteerd!", f"Winkelvoorraad-checklist opgeslagen als {filename}")
 
         self.battery_health.trace_add("write", self.update_battery_health_style)
+
+    def export_sales_pitch(self):
+        file = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Tekstbestand", "*.txt")], initialfile="Welkom bij uw nieuwe laptop!")
+        if file:
+            self.filename = file
+            self.export_file_as_sales_pitch(file)
+
+    def export_file_as_sales_pitch(self, filename):
+    # Format the data into a sales pitch and save it into the .txt file
+        with open(filename, 'w') as file:
+            file.write("+=====[ Laptop Te Koop! ]=====+\n")
+            file.write(f"Ben je op zoek naar een betrouwbare laptop? Zoek niet verder! Deze {self.brand.get()} laptop heeft alles wat je nodig hebt:\n\n")
+            file.write(f"\u2022 **Ordernummer**: {self.order.get()}\n")
+            file.write(f"\u2022 **Windows Versie**: {self.windows_version.get()} - Geniet van de nieuwste functies en beveiliging!\n")
+            file.write(f"\u2022 **Accu Kwaliteit**: {self.get_battery_health()} - Perfect voor urenlang gebruik zonder opladen.\n")
+            file.write(f"\u2022 **RAM**: {self.get_ram()} - Multitasken gaat soepel en snel!\n")
+            file.write(f"\u2022 **Opslagruimte**: {self.get_storage()} - Genoeg ruimte voor al je bestanden, games en meer.\n")
+            file.write(f"\u2022 **Processor**: {self.get_cpu()} - Geniet van snelheid en prestaties op topniveau.\n\n")
+
+            if self.check_updates() == "Windows is bijgewerkt!":
+                file.write("Deze laptop is volledig bijgewerkt met de nieuwste Windows-updates.\n")
+            else:
+                file.write("Let op: deze laptop heeft mogelijk nog enkele Windows-updates nodig.\n")
+
+            if self.check_hp_hotkeys() == True and self.brand.get() == "HP":
+                file.write("Inclusief functionele HP Hotkeys voor snel en handig gebruik.\n")
+            elif self.brand.get() != "HP":
+                file.write("De perfecte keuze, zelfs zonder HP Hotkeys - dit model maakt het simpel!\n")
+
+            if self.conexant_installed.get() == "Ja":
+                file.write("Uitgerust met Conexant Audio voor een geweldige geluidservaring.\n")
+            else:
+                file.write("Audio is van hoge kwaliteit, zelfs zonder extra Conexant Audio-software.\n")
+
+            if self.drivers_check.get() == True:
+                file.write("Alle stuurprogramma's zijn up-to-date. Plug-and-play werkt naadloos!\n")
+            else:
+                file.write("Een kleine update kan de ervaring nog beter maken.\n")
+
+            if self.audio_check.get() == True:
+                file.write("Audio is getest en werkt perfect - ideaal voor werk en entertainment.\n")
+            else:
+                file.write("Audio is nog niet getest, maar biedt standaard hoge prestaties.\n")
+
+            if self.keyboard_check.get() == True:
+                file.write("Het toetsenbord is volledig getest en werkt foutloos - typen was nog nooit zo fijn!\n")
+            else:
+                file.write("Het toetsenbord biedt een comfortabele typ-ervaring, getest of niet!\n")
+
+            if self.touch_check.get() == True:
+                file.write("Het touchscreen is getest en werkt moeiteloos - perfect voor creatieve projecten.\n")
+            else:
+                file.write("Geen touchscreen? Geen probleem, het scherm is helder en responsief!\n")
+
+            if self.camera_check.get() == True:
+                file.write("De camera is getest en klaar voor videogesprekken en selfies!\n")
+            else:
+                file.write("Camera niet getest, maar altijd klaar om te presteren.\n")
+
+            if self.office_check.get() == True:
+                file.write("Inclusief volledig geinstalleerde en geactiveerde Microsoft Office - klaar voor werk of studie!\n")
+            else:
+                file.write("Microsoft Office niet nodig? Gebruik de laptop zoals jij wilt.\n")
+
+            file.write(f"\nDit alles wordt aangeboden voor een geweldige prijs. Grijp deze kans en voeg deze krachtige {self.brand.get()} laptop vandaag nog toe aan je leven!\n\n")
+            file.write(f"Gecontroleerd door {self.executor_name.get()} op {self.get_current_date()}.\n")
+            file.write("+================[ CZFEdit ]================+\n")
+
+        messagebox.showinfo("Verkooppitch Geexporteerd!", f"Verkooppitch opgeslagen als {filename}")
+
 
 
     def set_location(self):
