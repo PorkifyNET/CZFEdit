@@ -3,6 +3,7 @@ import datetime
 from datetime import datetime
 from math import ceil
 import os
+import shutil
 import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -39,11 +40,14 @@ if __name__ == "__main__":
 
 program_name = "CZFEdit"
 program_version = "v1.2"
+run_as_admin()
 global program_location
-program_location = os.path.dirname(__file__) if os.path.exists(os.path.dirname(__file__)) else filedialog.askdirectory(initialdir=__file__, mustexist=True, title="Waar ben ik geinstalleerd?")
+program_location = "D:/PorkifyNET/CZFEdit" if os.path.exists("D:/PorkifyNET/CZFEdit") else filedialog.askdirectory(initialdir=__file__, mustexist=True, title="Waar ben ik geinstalleerd?")
+print(f"New program location set: {program_location}")
 
-if not os.path.exists("%TEMP%/CZFEdit"):
+if not os.path.exists(f"{os.environ.get("TEMP")}/CZFEdit"):
     os.mkdir(f"{os.environ.get("TEMP")}/CZFEdit")
+    os.environ.setdefault("CZFEDIT_TEMP", f"{os.environ.get("TEMP")}/CZFEdit")
     print(f"No temporary folder was found, creating a new one in {os.environ.get("TEMP")}/CZFEdit...")
 
 def snap_to_nearest_power_of_2(n):
@@ -130,7 +134,6 @@ class LaptopChecklistApp:
         # Initialize menu bar
         self.create_menu()
 
-        # System information retrieval functions
     def get_ram(self):
         try:
             return str(f"{(ceil(int(psutil.virtual_memory().total / (1024 ** 3)))) + 1 } GB")
@@ -169,8 +172,14 @@ class LaptopChecklistApp:
                     battery_health_var = lines[10][15:].strip()
                     return battery_health_var
                 
-            except:
-                return "Leesfout"
+            except Exception as e:
+                messagebox.showerror(program_name, e)
+                return "Onbekend"
+
+            try:
+                os.remove(f"{program_location}/battery_info.txt")
+            except Exception as e:
+                messagebox.showwarning(program_name, e)
 
     def check_updates(self):
         try:
@@ -193,12 +202,12 @@ class LaptopChecklistApp:
             return "Onbekend"
 
     def check_hp_hotkeys(self):
-        if os.path.exists("C:\Program Files (x86)\HP\HP Hotkey Support\HotkeyService.exe"):
+        if os.path.exists("C:/Program Files (x86)/HP/HP Hotkey Support/HotkeyService.exe"):
             return "Ja"
         else: return "Nee"
 
     def check_conexant_audio(self):
-        if os.path.exists("C:\Program Files\CONEXANT"):
+        if os.path.exists("C:/Program Files/CONEXANT"):
             return "Nee"
         else: return "Ja"
         
@@ -310,7 +319,6 @@ class LaptopChecklistApp:
             Tooltip(self.hp_hotkeys_label, "Hotkeys zijn nodig op HP laptops. Is dit geen HP laptop? Dan kun je dit negeren!")
         else:
             self.hp_hotkeys_label.config(foreground="black")
-            Tooltip(self.hp_hotkeys_label, "Als dit een HP laptop is is het nodig om HP Hotkeys te installeren. De installatie kan gevonden worden onder Controle > HP > Instaleer Hotkeys...")
 
     def update_conexant_style(self, *args):
         value = self.conexant_installed.get()
@@ -318,7 +326,8 @@ class LaptopChecklistApp:
 
         if value == "Nee":
             self.conexant_audio_label.config(foreground="orange")
-            Tooltip(self.conexant_audio_label, "De Conexant audio driver kan wel eens geinstalleerd worden terwijl er geen Conexant-speakers in de laptop zitten. Dit veroorzaakt veel irritante pop-ups. Als dit niet het geval is kun je dit negeren.")
+            Tooltip(self.conexant_audio_label, """De Conexant audio driver kan wel eens geinstalleerd worden terwijl er geen Conexant-speakers in de laptop zitten. 
+                    Dit veroorzaakt veel irritante pop-ups. Als dit niet het geval is kun je dit negeren.""")
         else:
             self.conexant_audio_label.config(foreground="black")
         
@@ -344,7 +353,7 @@ class LaptopChecklistApp:
         # Laptop Brand
         brand_text = None
         ttk.Label(self.root, text="Merk Laptop:").grid(row=3, column=0, padx=5, pady=5)
-        self.brand = ttk.Combobox(self.root, values=["Acer", "Asus", "Dell", "Dynabook / Toshiba", "Fujitsu", "HP", "Lenovo", "Microsoft Surface"], textvariable=brand_text)
+        self.brand = ttk.Combobox(self.root, values=["Acer", "Asus", "Dell", "Dynabook / Toshiba", "Fujitsu", "HP", "Lenovo", "Microsoft Surface", "MSI"], textvariable=brand_text)
         self.brand.grid(row=3, column=1, padx=5, pady=5)
 
         # Windows Version
@@ -450,20 +459,6 @@ class LaptopChecklistApp:
     
     def create_menu(self):
         menu_bar = tk.Menu(self.root)
-        
-        def is_wifi_enabled():
-            # Get all network interfaces
-            interfaces = psutil.net_if_stats()
-
-            # Check common Wi-Fi interface names (can vary by system)
-            wifi_names = ["Wi-Fi", "wlan0", "wlan1", "Wireless Network Connection"]
-
-            # Check each Wi-Fi interface to see if it's up
-            for interface in wifi_names:
-                if interface in interfaces and interfaces[interface].isup:
-                    return True  # Wi-Fi is enabled
-
-            return False  # Wi-Fi is disabled
 
         # File Menu
         file_menu = tk.Menu(menu_bar, tearoff=0)
@@ -525,10 +520,8 @@ class LaptopChecklistApp:
         checks_menu.add_cascade(label="Office Activeren", menu=office_activation)
 
         checks_menu.add_separator()
-        
-        network_enabled = is_wifi_enabled()
+
         acer_checks = tk.Menu(checks_menu, tearoff=0)
-        acer_checks.add_checkbutton(label="Netwerk uitschakelen", variable=network_enabled, command=self.toggle_wifi)
         checks_menu.add_cascade(label="Acer", menu=acer_checks, state="disabled")
         
         asus_checks = tk.Menu(checks_menu, tearoff=0)
@@ -536,8 +529,12 @@ class LaptopChecklistApp:
         
         dell_checks = tk.Menu(checks_menu, tearoff=0)
         dell_driver_updates = tk.Menu(dell_checks, tearoff=0)
+        latitude = tk.Menu(dell_driver_updates)
+
+
+        dell_driver_updates.add_cascade(label="Latitude", menu=latitude)
         dell_checks.add_cascade(label="Verwijder Aangepaste Bootscreen Logo", menu=dell_driver_updates)
-        checks_menu.add_cascade(label="Dell", menu=dell_checks)
+        checks_menu.add_cascade(label="Dell", menu=dell_checks, state="disabled")
 
         dynabook_toshiba_checks = tk.Menu(checks_menu, tearoff=0)
         checks_menu.add_cascade(label="Dynabook / Toshiba", menu=dynabook_toshiba_checks, state="disabled")
@@ -559,6 +556,9 @@ class LaptopChecklistApp:
         
         surface_checks = tk.Menu(checks_menu, tearoff=0)
         checks_menu.add_cascade(label="Microsoft Surface", menu=surface_checks, state="disabled")
+
+        msi_checks = tk.Menu(checks_menu, tearoff=0)
+        checks_menu.add_cascade(label="MSI", menu=msi_checks, state="disabled")
 
         menu_bar.add_cascade(label="Controles", menu=checks_menu)
         
@@ -724,6 +724,9 @@ class LaptopChecklistApp:
                 elif line.startswith("POSAUD"):
                     self.audio_check.set(line.split("POSAUD")[1].strip())
                     print(f"Found POSAUD {line.split("POSAUD")[1].strip()}")
+                elif line.startswith("POSMIC"):
+                    self.microphone_check.set(line.split("POSMIC")[1].strip())
+                    print(f"Found POSMIC {line.split("POSMIC")[1].strip()}")
                 elif line.startswith("POSKEY"):
                     self.keyboard_check.set(line.split("POSKEY")[1].strip())
                     print(f"Found POSKEY {line.split("POSKEY")[1].strip()}")
@@ -777,6 +780,7 @@ class LaptopChecklistApp:
             file.write(f"CONEXANT {self.check_conexant_audio()}\n")
             file.write(f"DRVUTD {self.drivers_check.get()}\n")
             file.write(f"POSAUD {self.audio_check.get()}\n")
+            file.write(f"POSMIC {self.microphone_check.get()}\n")
             file.write(f"POSKEY {self.keyboard_check.get()}\n")
             file.write(f"POSTCH {self.touch_check.get()}\n")
             file.write(f"POSCAM {self.camera_check.get()}\n")
@@ -833,6 +837,11 @@ class LaptopChecklistApp:
                 file.write(f"Audio is gecheckt en werkt!\n")
             else:
                 file.write(f"Audio is niet gecheckt!\n")
+
+            if self.microphone_check.get() == True:
+                file.write(f"Microfoon is gecheckt en werkt!\n")
+            else:
+                file.write(f"Microfoon is niet gecheckt!\n")
                 
             if self.keyboard_check.get() == True:
                 file.write(f"Toetsenbord is gecheckt en werkt volledig!\n")
@@ -902,6 +911,11 @@ class LaptopChecklistApp:
             else:
                 file.write("Audio is nog niet getest, maar biedt standaard hoge prestaties.\n")
 
+            if self.microphone_check.get() == True:
+                file.write("De microfoon is getest en pakt uw stem zonder problemen op - perfect voor werk of tijdens het chatten!")
+            else:
+                file.write("De microfoon is nog niet getest, maar het geluid zou zuiver moeten zijn.")
+
             if self.keyboard_check.get() == True:
                 file.write("Het toetsenbord is volledig getest en werkt foutloos - typen was nog nooit zo fijn!\n")
             else:
@@ -951,7 +965,7 @@ class LaptopChecklistApp:
         subprocess.Popen(f"{program_location}/plugins/BatteryInfoView.exe", shell=True)
         
     def open_snappy(self):
-        subprocess.Popen(f"{program_location}/plugins/Snappy64.exe", shell=True)
+        subprocess.Popen(f"{program_location}/plugins/Snappy.lnk", shell=True)
     
     def manage_first_controllers(self):
         pass
@@ -1028,20 +1042,20 @@ class LaptopChecklistApp:
         
     def office_shortcuts_programdata(self):
         try:
-            subprocess.Popen("""xcopy "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Word.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen("""xcopy "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Excel.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen("""xcopy "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Powerpoint.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen("""xcopy "C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Outlook (Classic).lnk" %USERPROFILE%/Desktop""", shell=True)
+            shutil.copy("C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Word.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy("C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Excel.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy("C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Powerpoint.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy("C:/ProgramData/Microsoft/Windows/Start Menu/Programs/Outlook (Classic).lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
             messagebox.showinfo(program_name, "Office snelkoppelingen aangemaakt!")
         except Exception as e:
             messagebox.showerror(program_name, f"Kon Office snelkoppelingen niet maken: {e}")
             
     def office_shortcuts_d_drive(self):
         try:
-            subprocess.Popen(f"""xcopy "{program_location}/shrtcts/Word.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen(f"""xcopy "{program_location}/shrtcts/Excel.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen(f"""xcopy "{program_location}/shrtcts/Powerpoint.lnk" %USERPROFILE%/Desktop""", shell=True)
-            subprocess.Popen(f"""xcopy "{program_location}/shrtcts/Outlook (Classic).lnk" %USERPROFILE%/Desktop""", shell=True)
+            shutil.copy(f"{program_location}/shrtcts/Word.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy(f"{program_location}/shrtcts/Excel.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy(f"{program_location}/shrtcts/Powerpoint.lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
+            shutil.copy(f"{program_location}/shrtcts/Outlook (Classic).lnk", f"{os.environ.get("USERPROFILE")}/Desktop")
             messagebox.showinfo(program_name, "Office snelkoppelingen aangemaakt!")
         except Exception as e:
             messagebox.showerror(program_name, f"Kon Office snelkoppelingen niet maken: {e}")
