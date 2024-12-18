@@ -558,7 +558,8 @@ class LaptopChecklistApp:
         checks_menu.add_cascade(label="Microsoft Surface", menu=surface_checks, state="disabled")
 
         msi_checks = tk.Menu(checks_menu, tearoff=0)
-        checks_menu.add_cascade(label="MSI", menu=msi_checks, state="disabled")
+        msi_checks.add_command(label="Fix Nahimic driver...", command=self.nahimic_driver_install)
+        checks_menu.add_cascade(label="MSI", menu=msi_checks)
 
         menu_bar.add_cascade(label="Controles", menu=checks_menu)
         
@@ -589,6 +590,13 @@ class LaptopChecklistApp:
         refresh_menu.add_command(label="HP Hotkeys Service", command=self.refresh_hp_label())
         refresh_menu.add_command(label="Conexant Audio Service", command=self.refresh_conexant_label())
         #menu_bar.add_cascade(label="Vernieuwen", menu=refresh_menu)
+        
+        # CLauncher Menu
+        clauncher_menu = tk.Menu(menu_bar, tearoff=0)
+        clauncher_menu.add_command(label="Open CLauncher...", command=self.open_clauncher)
+        clauncher_menu.add_separator()
+        clauncher_menu.add_command(label="Repareer scripts", command=self.repair_scripts)
+        #menu_bar.add_cascade(label="CLauncher", menu=clauncher_menu)
 
         #Shutdown Menu
         shutdown_menu = tk.Menu(menu_bar, tearoff=0)
@@ -653,6 +661,19 @@ class LaptopChecklistApp:
         
     def open_biospw(self):
         subprocess.run("start msedge --inprivate bios-pw.org", shell=True)
+        
+    def open_clauncher(self):
+        subprocess.Popen(f"{program_location}/plugins/clauncher.exe")
+        
+    def repair_scripts(self):
+        try:
+            print(f"""xcopy {program_location}/plugins/CZTemp {os.environ.get("TEMP")}/CZTemp -e -c -i -h -k -y""")
+            subprocess.Popen(f"""xcopy {program_location}/plugins/CZTemp %TEMP%/CZTemp /ecihky""")
+        except Exception as e:
+            messagebox.showerror(program_name, e)
+            
+    def nahimic_driver_install(self):
+        subprocess.Popen(f"{program_location}/plugins/msi/nahimic.exe")
 
     # Function placeholders for menu actions
     def new_file(self):

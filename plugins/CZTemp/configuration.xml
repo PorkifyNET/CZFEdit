@@ -1,0 +1,13 @@
+<Configuration>
+
+  <Add OfficeClientEdition="64" Channel="Current" AllowCdnFallback="true">
+    <Product ID="ProPlus2021Retail">
+      <Language ID="nl-NL" />
+    </Product>
+  </Add>
+
+  <Remove All="True" />
+
+  <Display Level="Full" AcceptEULA="TRUE" />
+
+</Configuration>

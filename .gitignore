@@ -161,3 +161,7 @@ cython_debug/
 
 *.vs/
 orders/
+barcode.png
+battery_info.txt
+AssetGen.txt
+notes/
